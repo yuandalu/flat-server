@@ -1,14 +1,17 @@
+import "source-map-support/register";
 import "reflect-metadata";
 import fastify from "fastify";
 import cors from "fastify-cors";
-import { Server } from "./constants/Process";
+import { Server, metricsConfig } from "./constants/Process";
 import { Status } from "./constants/Project";
-import { v1RegisterRouters } from "./v1";
 import jwtVerify from "./plugins/JWT";
 import { ajvSelfPlugin } from "./plugins/Ajv";
 import { orm } from "./thirdPartyService/TypeORMService";
 import { ErrorCode } from "./ErrorCode";
-import { loggerServer, parseError } from "./Logger";
+import { loggerServer, parseError } from "./logger";
+import { MetricsSever } from "./metrics";
+import { registerV1Routers } from "./utils/RegistryRouters";
+import { httpRouters } from "./v1/Routes";
 
 const app = fastify({
     caseSensitive: true,
@@ -16,6 +19,11 @@ const app = fastify({
         plugins: [ajvSelfPlugin],
     },
 });
+
+if (metricsConfig.ENABLED) {
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    new MetricsSever(app).start();
+}
 
 app.setErrorHandler((err, _request, reply) => {
     if (err.validation) {
@@ -34,7 +42,7 @@ app.setErrorHandler((err, _request, reply) => {
 });
 
 void app.register(jwtVerify).then(() => {
-    v1RegisterRouters(app);
+    registerV1Routers(app, httpRouters);
 });
 
 void app.register(cors, {
@@ -47,7 +55,7 @@ app.get("/health-check", async (_req, reply) => {
     await reply.code(200).send();
 });
 
-void orm.then(() => {
+void orm().then(() => {
     app.listen(Server.PORT, "0.0.0.0", (err, address) => {
         if (err) {
             loggerServer.error("server launch failed", parseError(err));

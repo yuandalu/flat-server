@@ -1,21 +1,37 @@
 import { createQueryBuilder } from "typeorm";
-import { Status } from "../../../../constants/Project";
-import { ErrorCode } from "../../../../ErrorCode";
+import { Region, Status } from "../../../../constants/Project";
 import { CloudStorageConfigsDAO } from "../../../../dao";
 import { CloudStorageFilesModel } from "../../../../model/cloudStorage/CloudStorageFiles";
 import { CloudStorageUserFilesModel } from "../../../../model/cloudStorage/CloudStorageUserFiles";
-import { Controller, FastifySchema } from "../../../../types/Server";
+import { FastifySchema, Response, ResponseError } from "../../../../types/Server";
 import { FileConvertStep } from "../../../../model/cloudStorage/Constants";
-import { parseError } from "../../../../Logger";
+import { AbstractController } from "../../../../abstract/controller";
+import { Controller } from "../../../../decorator/Controller";
 
-export const cloudStorageList: Controller<
-    CloudStorageListRequest,
-    CloudStorageListResponse
-> = async ({ req, logger }) => {
-    const { userUUID } = req.user;
-    const { page } = req.query;
+@Controller<RequestType, ResponseType>({
+    method: "post",
+    path: "cloud-storage/list",
+    auth: true,
+})
+export class CloudStorageList extends AbstractController<RequestType, ResponseType> {
+    public static readonly schema: FastifySchema<RequestType> = {
+        querystring: {
+            type: "object",
+            required: ["page"],
+            properties: {
+                page: {
+                    type: "integer",
+                    maximum: 50,
+                    minimum: 1,
+                },
+            },
+        },
+    };
 
-    try {
+    public async execute(): Promise<Response<ResponseType>> {
+        const { page } = this.querystring;
+        const userUUID = this.userUUID;
+
         const userInfo = await CloudStorageConfigsDAO().findOne(["total_usage"], {
             user_uuid: userUUID,
         });
@@ -39,6 +55,7 @@ export const cloudStorageList: Controller<
             .addSelect("f.task_uuid", "task_uuid")
             .addSelect("f.task_token", "task_token")
             .addSelect("f.created_at", "create_at")
+            .addSelect("f.region", "region")
             .innerJoin(CloudStorageFilesModel, "f", "fc.file_uuid = f.file_uuid")
             .where(
                 `fc.user_uuid = :userUUID
@@ -63,6 +80,7 @@ export const cloudStorageList: Controller<
                 taskUUID: file.task_uuid,
                 taskToken: file.task_token,
                 createAt: file.create_at.valueOf(),
+                region: file.region,
             };
         });
 
@@ -73,36 +91,20 @@ export const cloudStorageList: Controller<
                 files: resp,
             },
         };
-    } catch (err) {
-        logger.error("request failed", parseError(err));
-        return {
-            status: Status.Failed,
-            code: ErrorCode.CurrentProcessFailed,
-        };
     }
-};
 
-interface CloudStorageListRequest {
+    public errorHandler(error: Error): ResponseError {
+        return this.currentProcessFailed(error);
+    }
+}
+
+interface RequestType {
     querystring: {
         page: number;
     };
 }
 
-export const cloudStorageListSchemaType: FastifySchema<CloudStorageListRequest> = {
-    querystring: {
-        type: "object",
-        required: ["page"],
-        properties: {
-            page: {
-                type: "integer",
-                maximum: 50,
-                minimum: 1,
-            },
-        },
-    },
-};
-
-interface CloudStorageListResponse {
+interface ResponseType {
     totalUsage: number;
     files: Array<{
         fileUUID: string;
@@ -113,6 +115,7 @@ interface CloudStorageListResponse {
         taskUUID: string;
         taskToken: string;
         createAt: number;
+        region: Region;
     }>;
 }
 
@@ -125,4 +128,5 @@ interface CloudStorageFile {
     task_uuid: string;
     task_token: string;
     create_at: Date;
+    region: Region;
 }

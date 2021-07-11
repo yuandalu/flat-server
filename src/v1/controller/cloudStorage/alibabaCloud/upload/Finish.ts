@@ -4,23 +4,43 @@ import {
     CloudStorageFilesDAO,
     CloudStorageUserFilesDAO,
 } from "../../../../../dao";
-import { Controller, FastifySchema } from "../../../../../types/Server";
-import { Status } from "../../../../../constants/Project";
+import { FastifySchema, Response, ResponseError } from "../../../../../types/Server";
+import { Region, Status } from "../../../../../constants/Project";
 import { ErrorCode } from "../../../../../ErrorCode";
 import RedisService from "../../../../../thirdPartyService/RedisService";
 import { RedisKey } from "../../../../../utils/Redis";
 import { checkTotalUsage } from "./Utils";
 import { getFilePath, isExistObject, getOSSFileURLPath } from "../Utils";
-import { parseError } from "../../../../../Logger";
+import { Controller } from "../../../../../decorator/Controller";
+import { AbstractController } from "../../../../../abstract/controller";
 
-export const alibabaCloudUploadFinish: Controller<
-    AlibabaCloudUploadFinishRequest,
-    AlibabaCloudUploadFinishResponse
-> = async ({ req, logger }) => {
-    const { fileUUID } = req.body;
-    const { userUUID } = req.user;
+@Controller<RequestType, ResponseType>({
+    method: "post",
+    path: "cloud-storage/alibaba-cloud/upload/finish",
+    auth: true,
+})
+export class AlibabaCloudUploadFinish extends AbstractController<RequestType, ResponseType> {
+    public static readonly schema: FastifySchema<RequestType> = {
+        body: {
+            type: "object",
+            required: ["fileUUID", "region"],
+            properties: {
+                fileUUID: {
+                    type: "string",
+                    format: "uuid-v4",
+                },
+                region: {
+                    type: "string",
+                    enum: [Region.CN_HZ, Region.US_SV, Region.SG, Region.IN_MUM, Region.GB_LON],
+                },
+            },
+        },
+    };
 
-    try {
+    public async execute(): Promise<Response<ResponseType>> {
+        const { fileUUID, region } = this.body;
+        const userUUID = this.userUUID;
+
         const fileInfo = await RedisService.hmget(
             RedisKey.cloudStorageFileInfo(userUUID, fileUUID),
             ["fileName", "fileSize"],
@@ -65,6 +85,7 @@ export const alibabaCloudUploadFinish: Controller<
                     file_size: fileSize,
                     file_url: alibabaCloudFileURL,
                     file_uuid: fileUUID,
+                    region,
                 }),
             );
 
@@ -82,7 +103,9 @@ export const alibabaCloudUploadFinish: Controller<
                         total_usage: String(totalUsage),
                     },
                     {
-                        total_usage: String(totalUsage),
+                        orUpdate: {
+                            total_usage: String(totalUsage),
+                        },
                     },
                 ),
             );
@@ -95,32 +118,18 @@ export const alibabaCloudUploadFinish: Controller<
             status: Status.Success,
             data: {},
         };
-    } catch (err) {
-        logger.error("request failed", parseError(err));
-        return {
-            status: Status.Failed,
-            code: ErrorCode.CurrentProcessFailed,
-        };
     }
-};
 
-interface AlibabaCloudUploadFinishRequest {
+    public errorHandler(error: Error): ResponseError {
+        return this.currentProcessFailed(error);
+    }
+}
+
+interface RequestType {
     body: {
         fileUUID: string;
+        region: Region;
     };
 }
 
-export const alibabaCloudUploadFinishSchemaType: FastifySchema<AlibabaCloudUploadFinishRequest> = {
-    body: {
-        type: "object",
-        required: ["fileUUID"],
-        properties: {
-            fileUUID: {
-                type: "string",
-                format: "uuid-v4",
-            },
-        },
-    },
-};
-
-interface AlibabaCloudUploadFinishResponse {}
+interface ResponseType {}

@@ -129,6 +129,12 @@ Deployment is not needed for local development. If you want to bring the server 
 | MYSQL_DB                            | MySQL database                                 | e.g. `flat_server`                                                         |
 | JWT_SECRET                          | JWT secret                                     |                                                                            |
 | JWT_ALGORITHMS                      | JWT crypto algorithms                          | See [Algorithms supported][jwt-crypto]                                     |
+| LOG_PATHNAME                        | Log path name                                  | e.g: `{{PROJECT_DIR}}/logs`. See [env variable][env-variable]    |
+| LOG_FILENAME                        | Log file name                                  | e.g: `{{DAY_DATE}}`. See [env variable][env-variable]    |
+| METRICS_ENABLED                     | enable prometheus metrics                      | Default: `false`, see: [fastify-metrics][fastify-metrics]                  |
+| METRICS_ENDPOINT                    | metrics endpoint                               | Default: `/metrics`.                                                       |
+| METRICS_BLACKLIST                   | Skip metrics collection for blacklisted routes | Default: `/metrics,/health-check`, split by comma                           |
+| METRICS_PORT                        | metrics http server port                       | Default: `0`, if metrics port eq 0, metrics server will register `endpoint` route on flat-server |
 | CLOUD_STORAGE_CONCURRENT            | Maximum count of Cloud Storage uploading files | Default: `3`                                                               |
 | CLOUD_STORAGE_SINGLE_FILE_SIZE      | Maximum size of a Cloud Storage file           | Default: `524288000` (500M)                                                |
 | CLOUD_STORAGE_TOTAL_SIZE            | Maximum Cloud Storage size of a user           | Default: `2147483648` (2G)                                                 |
@@ -138,8 +144,8 @@ Deployment is not needed for local development. If you want to bring the server 
 | WEB_WECHAT_APP_SECRET               | [Wechat Open Platform][open-wechat] App Secret |                                                                            |
 | MOBILE_WECHAT_APP_ID                | [Wechat Open Platform][open-wechat] App ID     |                                                                            |
 | MOBILE_WECHAT_APP_SECRET            | [Wechat Open Platform][open-wechat] App Secret |                                                                            |
-| GITHUB_CLIENT_ID                    | Github Client ID                               | See [Authorizing OAuth Apps](authorizing-oauth-apps)                       |
-| GITHUB_CLIENT_SECRET                | Github Client Secret                           | See [Authorizing OAuth Apps](authorizing-oauth-apps)                       |
+| GITHUB_CLIENT_ID                    | Github Client ID                               | See [Authorizing OAuth Apps][authorizing-oauth-apps]                       |
+| GITHUB_CLIENT_SECRET                | Github Client Secret                           | See [Authorizing OAuth Apps][authorizing-oauth-apps]                       |
 | AGORA_APP_ID                        | Agora App ID                                   | For RTC and RTM. See [Use an App ID for authentication][agora-app-id-auth] |
 | AGORA_APP_CERTIFICATE               | Agora App Certificate                          | See [Enable the App Certificate][agora-app-auth]                           |
 | AGORA_RESTFUL_ID                    | Agora RESTful ID                               | For classroom replaying. See [Restful Authentication][agora-restful-auth]  |
@@ -176,6 +182,8 @@ If you need to deploy to a remote server, add the following variables additional
 
 [netless-auth]: https://docs.agora.io/cn/whiteboard/generate_whiteboard_token_at_app_server?platform=RESTful
 
+[env-variable]: https://github.com/netless-io/flat-server/blob/main/src/utils/EnvVariable.ts
+
 [jwt-crypto]: https://github.com/auth0/node-jsonwebtoken/tree/d71e383862fc735991fd2e759181480f066bf138#algorithms-supported
 
 [open-wechat]: https://open.weixin.qq.com/
@@ -190,6 +198,7 @@ If you need to deploy to a remote server, add the following variables additional
 [docker]: https://hub.docker.com
 [docker-setting]: https://hub.docker.com/settings/security
 
+[fastify-metrics]: https://github.com/SkeLLLa/fastify-metrics
 
 ## Tech Stack
 

@@ -1,19 +1,48 @@
-import { Controller, FastifySchema } from "../../../../types/Server";
-import { Status } from "../../../../constants/Project";
+import { FastifySchema, Response, ResponseError } from "../../../../types/Server";
+import { Region, Status } from "../../../../constants/Project";
 import { ErrorCode } from "../../../../ErrorCode";
 import { RoomStatus, RoomType } from "../../../../model/room/Constants";
-import { RoomPeriodicConfigDAO, RoomPeriodicDAO, RoomPeriodicUserDAO } from "../../../../dao";
+import {
+    RoomPeriodicConfigDAO,
+    RoomPeriodicDAO,
+    RoomPeriodicUserDAO,
+    RoomRecordDAO,
+} from "../../../../dao";
 import { LessThan, MoreThan, Not } from "typeorm";
-import { parseError } from "../../../../Logger";
+import { AbstractController } from "../../../../abstract/controller";
+import { Controller } from "../../../../decorator/Controller";
 
-export const periodicSubRoomInfo: Controller<
-    PeriodicSubRoomInfoRequest,
-    PeriodicSubRoomInfoResponse
-> = async ({ req, logger }) => {
-    const { periodicUUID, roomUUID, needOtherRoomTimeInfo } = req.body;
-    const { userUUID } = req.user;
+@Controller<RequestType, ResponseType>({
+    method: "post",
+    path: "room/info/periodic-sub-room",
+    auth: true,
+})
+export class PeriodicSubRoomInfo extends AbstractController<RequestType, ResponseType> {
+    public static readonly schema: FastifySchema<RequestType> = {
+        body: {
+            type: "object",
+            required: ["roomUUID", "periodicUUID"],
+            properties: {
+                roomUUID: {
+                    type: "string",
+                    format: "uuid-v4",
+                },
+                periodicUUID: {
+                    type: "string",
+                    format: "uuid-v4",
+                },
+                needOtherRoomTimeInfo: {
+                    type: "boolean",
+                    nullable: true,
+                },
+            },
+        },
+    };
 
-    try {
+    public async execute(): Promise<Response<ResponseType>> {
+        const { periodicUUID, roomUUID, needOtherRoomTimeInfo } = this.body;
+        const userUUID = this.userUUID;
+
         const periodicRoomUserInfo = await RoomPeriodicUserDAO().findOne(["id"], {
             periodic_uuid: periodicUUID,
             user_uuid: userUUID,
@@ -43,7 +72,7 @@ export const periodicSubRoomInfo: Controller<
         const { room_status, begin_time, end_time } = periodicRoomInfo;
 
         const periodicConfigInfo = await RoomPeriodicConfigDAO().findOne(
-            ["title", "owner_uuid", "room_type"],
+            ["title", "owner_uuid", "room_type", "region"],
             {
                 periodic_uuid: periodicUUID,
             },
@@ -56,7 +85,7 @@ export const periodicSubRoomInfo: Controller<
             };
         }
 
-        const { title, owner_uuid, room_type } = periodicConfigInfo;
+        const { title, owner_uuid, room_type, region } = periodicConfigInfo;
 
         const {
             previousPeriodicRoomBeginTime,
@@ -100,6 +129,10 @@ export const periodicSubRoomInfo: Controller<
             };
         })();
 
+        const recordInfo = await RoomRecordDAO().findOne(["id"], {
+            room_uuid: roomUUID,
+        });
+
         return {
             status: Status.Success,
             data: {
@@ -110,6 +143,8 @@ export const periodicSubRoomInfo: Controller<
                     roomType: room_type,
                     roomStatus: room_status,
                     ownerUUID: owner_uuid,
+                    hasRecord: !!recordInfo,
+                    region,
                 },
                 previousPeriodicRoomBeginTime,
                 nextPeriodicRoomEndTime,
@@ -119,16 +154,14 @@ export const periodicSubRoomInfo: Controller<
                 }),
             },
         };
-    } catch (err) {
-        logger.error("request failed", parseError(err));
-        return {
-            status: Status.Failed,
-            code: ErrorCode.CurrentProcessFailed,
-        };
     }
-};
 
-interface PeriodicSubRoomInfoRequest {
+    public errorHandler(error: Error): ResponseError {
+        return this.currentProcessFailed(error);
+    }
+}
+
+interface RequestType {
     body: {
         roomUUID: string;
         periodicUUID: string;
@@ -136,28 +169,7 @@ interface PeriodicSubRoomInfoRequest {
     };
 }
 
-export const periodicSubRoomInfoSchemaType: FastifySchema<PeriodicSubRoomInfoRequest> = {
-    body: {
-        type: "object",
-        required: ["roomUUID", "periodicUUID"],
-        properties: {
-            roomUUID: {
-                type: "string",
-                format: "uuid-v4",
-            },
-            periodicUUID: {
-                type: "string",
-                format: "uuid-v4",
-            },
-            needOtherRoomTimeInfo: {
-                type: "boolean",
-                nullable: true,
-            },
-        },
-    },
-};
-
-interface PeriodicSubRoomInfoResponse {
+interface ResponseType {
     roomInfo: {
         title: string;
         beginTime: number;
@@ -165,6 +177,8 @@ interface PeriodicSubRoomInfoResponse {
         roomType: RoomType;
         roomStatus: RoomStatus;
         ownerUUID: string;
+        hasRecord: boolean;
+        region: Region;
     };
     previousPeriodicRoomBeginTime: number | null;
     nextPeriodicRoomEndTime: number | null;

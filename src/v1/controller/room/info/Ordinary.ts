@@ -1,18 +1,34 @@
-import { Controller, FastifySchema } from "../../../../types/Server";
-import { Status } from "../../../../constants/Project";
+import { FastifySchema, Response, ResponseError } from "../../../../types/Server";
+import { Region, Status } from "../../../../constants/Project";
 import { ErrorCode } from "../../../../ErrorCode";
 import { RoomStatus, RoomType } from "../../../../model/room/Constants";
-import { RoomDAO, RoomUserDAO, UserDAO } from "../../../../dao";
-import { parseError } from "../../../../Logger";
+import { RoomDAO, RoomRecordDAO, RoomUserDAO, UserDAO } from "../../../../dao";
+import { AbstractController } from "../../../../abstract/controller";
+import { Controller } from "../../../../decorator/Controller";
 
-export const ordinaryInfo: Controller<OrdinaryInfoRequest, OrdinaryInfoResponse> = async ({
-    req,
-    logger,
-}) => {
-    const { roomUUID } = req.body;
-    const { userUUID } = req.user;
+@Controller<RequestType, ResponseType>({
+    method: "post",
+    path: "room/info/ordinary",
+    auth: true,
+})
+export class OrdinaryInfo extends AbstractController<RequestType, ResponseType> {
+    public static readonly schema: FastifySchema<RequestType> = {
+        body: {
+            type: "object",
+            required: ["roomUUID"],
+            properties: {
+                roomUUID: {
+                    type: "string",
+                    format: "uuid-v4",
+                },
+            },
+        },
+    };
 
-    try {
+    public async execute(): Promise<Response<ResponseType>> {
+        const { roomUUID } = this.body;
+        const userUUID = this.userUUID;
+
         const roomUserInfo = await RoomUserDAO().findOne(["id"], {
             user_uuid: userUUID,
             room_uuid: roomUUID,
@@ -26,7 +42,7 @@ export const ordinaryInfo: Controller<OrdinaryInfoRequest, OrdinaryInfoResponse>
         }
 
         const roomInfo = await RoomDAO().findOne(
-            ["title", "begin_time", "end_time", "room_type", "room_status", "owner_uuid"],
+            ["title", "begin_time", "end_time", "room_type", "room_status", "owner_uuid", "region"],
             {
                 room_uuid: roomUUID,
             },
@@ -39,7 +55,15 @@ export const ordinaryInfo: Controller<OrdinaryInfoRequest, OrdinaryInfoResponse>
             };
         }
 
-        const { title, begin_time, end_time, room_type, room_status, owner_uuid } = roomInfo;
+        const {
+            title,
+            begin_time,
+            end_time,
+            room_type,
+            room_status,
+            owner_uuid,
+            region,
+        } = roomInfo;
 
         const userInfo = await UserDAO().findOne(["user_name"], {
             user_uuid: owner_uuid,
@@ -52,6 +76,10 @@ export const ordinaryInfo: Controller<OrdinaryInfoRequest, OrdinaryInfoResponse>
             };
         }
 
+        const recordInfo = await RoomRecordDAO().findOne(["id"], {
+            room_uuid: roomUUID,
+        });
+
         return {
             status: Status.Success,
             data: {
@@ -63,38 +91,25 @@ export const ordinaryInfo: Controller<OrdinaryInfoRequest, OrdinaryInfoResponse>
                     roomStatus: room_status,
                     ownerUUID: owner_uuid,
                     ownerUserName: userInfo.user_name,
+                    hasRecord: !!recordInfo,
+                    region,
                 },
             },
         };
-    } catch (err) {
-        logger.error("request failed", parseError(err));
-        return {
-            status: Status.Failed,
-            code: ErrorCode.CurrentProcessFailed,
-        };
     }
-};
 
-interface OrdinaryInfoRequest {
+    public errorHandler(error: Error): ResponseError {
+        return this.currentProcessFailed(error);
+    }
+}
+
+interface RequestType {
     body: {
         roomUUID: string;
     };
 }
 
-export const OrdinaryInfoSchemaType: FastifySchema<OrdinaryInfoRequest> = {
-    body: {
-        type: "object",
-        required: ["roomUUID"],
-        properties: {
-            roomUUID: {
-                type: "string",
-                format: "uuid-v4",
-            },
-        },
-    },
-};
-
-interface OrdinaryInfoResponse {
+interface ResponseType {
     roomInfo: {
         title: string;
         beginTime: number;
@@ -103,5 +118,7 @@ interface OrdinaryInfoResponse {
         roomStatus: RoomStatus;
         ownerUUID: string;
         ownerUserName: string;
+        hasRecord: boolean;
+        region: Region;
     };
 }

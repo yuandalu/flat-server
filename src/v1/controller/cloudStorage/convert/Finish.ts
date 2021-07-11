@@ -1,20 +1,36 @@
 import { Status } from "../../../../constants/Project";
 import { ErrorCode } from "../../../../ErrorCode";
 import { CloudStorageFilesDAO, CloudStorageUserFilesDAO } from "../../../../dao";
-import { Controller, FastifySchema } from "../../../../types/Server";
+import { FastifySchema, Response, ResponseError } from "../../../../types/Server";
 import { whiteboardQueryConversionTask } from "../../../utils/request/whiteboard/WhiteboardRequest";
 import { FileConvertStep } from "../../../../model/cloudStorage/Constants";
 import { determineType, isConvertDone, isConvertFailed } from "./Utils";
-import { parseError } from "../../../../Logger";
+import { AbstractController } from "../../../../abstract/controller";
+import { Controller } from "../../../../decorator/Controller";
 
-export const fileConvertFinish: Controller<
-    FileConvertFinishRequest,
-    FileConvertFinishResponse
-> = async ({ req, logger }) => {
-    const { fileUUID } = req.body;
-    const { userUUID } = req.user;
+@Controller<RequestType, ResponseType>({
+    method: "post",
+    path: "cloud-storage/convert/finish",
+    auth: true,
+})
+export class FileConvertFinish extends AbstractController<RequestType, ResponseType> {
+    public static readonly schema: FastifySchema<RequestType> = {
+        body: {
+            type: "object",
+            required: ["fileUUID"],
+            properties: {
+                fileUUID: {
+                    type: "string",
+                    format: "uuid-v4",
+                },
+            },
+        },
+    };
 
-    try {
+    public async execute(): Promise<Response<ResponseType>> {
+        const { fileUUID } = this.body;
+        const userUUID = this.userUUID;
+
         const userFileInfo = await CloudStorageUserFilesDAO().findOne(["id"], {
             file_uuid: fileUUID,
             user_uuid: userUUID,
@@ -28,7 +44,7 @@ export const fileConvertFinish: Controller<
         }
 
         const fileInfo = await CloudStorageFilesDAO().findOne(
-            ["file_url", "convert_step", "task_uuid"],
+            ["file_url", "convert_step", "task_uuid", "region"],
             {
                 file_uuid: fileUUID,
             },
@@ -41,7 +57,7 @@ export const fileConvertFinish: Controller<
             };
         }
 
-        const { file_url: resource, convert_step, task_uuid } = fileInfo;
+        const { file_url: resource, convert_step, task_uuid, region } = fileInfo;
 
         if (isConvertDone(convert_step)) {
             return {
@@ -58,7 +74,7 @@ export const fileConvertFinish: Controller<
         }
 
         const fileType = determineType(resource);
-        const result = await whiteboardQueryConversionTask(task_uuid, fileType);
+        const result = await whiteboardQueryConversionTask(region, task_uuid, fileType);
         const convertStatus = result.data.status;
 
         switch (convertStatus) {
@@ -92,7 +108,7 @@ export const fileConvertFinish: Controller<
                     code: ErrorCode.FileConvertFailed,
                 };
             }
-            default:
+            default: {
                 return {
                     status: Status.Failed,
                     code:
@@ -100,33 +116,19 @@ export const fileConvertFinish: Controller<
                             ? ErrorCode.FileIsConvertWaiting
                             : ErrorCode.FileIsConverting,
                 };
+            }
         }
-    } catch (err) {
-        logger.error("request failed", parseError(err));
-        return {
-            status: Status.Failed,
-            code: ErrorCode.CurrentProcessFailed,
-        };
     }
-};
 
-interface FileConvertFinishRequest {
+    public errorHandler(error: Error): ResponseError {
+        return this.currentProcessFailed(error);
+    }
+}
+
+interface RequestType {
     body: {
         fileUUID: string;
     };
 }
 
-export const fileConvertFinishSchemaType: FastifySchema<FileConvertFinishRequest> = {
-    body: {
-        type: "object",
-        required: ["fileUUID"],
-        properties: {
-            fileUUID: {
-                type: "string",
-                format: "uuid-v4",
-            },
-        },
-    },
-};
-
-interface FileConvertFinishResponse {}
+interface ResponseType {}

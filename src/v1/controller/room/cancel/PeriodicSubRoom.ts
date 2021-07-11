@@ -1,4 +1,4 @@
-import { Controller, FastifySchema } from "../../../../types/Server";
+import { FastifySchema, Response, ResponseError } from "../../../../types/Server";
 import { Status } from "../../../../constants/Project";
 import { ErrorCode } from "../../../../ErrorCode";
 import { getConnection } from "typeorm";
@@ -7,20 +7,43 @@ import { roomIsRunning } from "../utils/Room";
 import { getNextPeriodicRoomInfo, updateNextPeriodicRoomInfo } from "../../../service/Periodic";
 import { PeriodicStatus } from "../../../../model/room/Constants";
 import { whiteboardBanRoom } from "../../../utils/request/whiteboard/WhiteboardRequest";
-import { parseError } from "../../../../Logger";
+import { AbstractController } from "../../../../abstract/controller";
+import { Controller } from "../../../../decorator/Controller";
 
-export const cancelPeriodicSubRoom: Controller<
-    CancelPeriodicSubRoomRequest,
-    CancelPeriodicSubRoomResponse
-> = async ({ req, logger }) => {
-    const { periodicUUID, roomUUID } = req.body;
-    const { userUUID } = req.user;
+@Controller<RequestType, ResponseType>({
+    method: "post",
+    path: "room/cancel/periodic-sub-room",
+    auth: true,
+})
+export class CancelPeriodicSubRoom extends AbstractController<RequestType, ResponseType> {
+    public static readonly schema: FastifySchema<RequestType> = {
+        body: {
+            type: "object",
+            required: ["periodicUUID"],
+            properties: {
+                periodicUUID: {
+                    type: "string",
+                    format: "uuid-v4",
+                },
+                roomUUID: {
+                    type: "string",
+                    format: "uuid-v4",
+                },
+            },
+        },
+    };
 
-    try {
-        const periodicConfig = await RoomPeriodicConfigDAO().findOne(["title", "room_type"], {
-            periodic_uuid: periodicUUID,
-            owner_uuid: userUUID,
-        });
+    public async execute(): Promise<Response<ResponseType>> {
+        const { periodicUUID, roomUUID } = this.body;
+        const userUUID = this.userUUID;
+
+        const periodicConfig = await RoomPeriodicConfigDAO().findOne(
+            ["title", "room_type", "region"],
+            {
+                periodic_uuid: periodicUUID,
+                owner_uuid: userUUID,
+            },
+        );
 
         if (periodicConfig === undefined) {
             return {
@@ -29,7 +52,7 @@ export const cancelPeriodicSubRoom: Controller<
             };
         }
 
-        const { title, room_type } = periodicConfig;
+        const { title, room_type, region } = periodicConfig;
 
         const periodicRoomInfo = await RoomPeriodicDAO().findOne(["begin_time"], {
             periodic_uuid: periodicUUID,
@@ -90,6 +113,7 @@ export const cancelPeriodicSubRoom: Controller<
                             user_uuid: userUUID,
                             title,
                             room_type,
+                            region,
                             ...nextRoomPeriodicInfo,
                         })),
                     );
@@ -109,7 +133,7 @@ export const cancelPeriodicSubRoom: Controller<
 
             await Promise.all(commands);
             if (roomInfo) {
-                await whiteboardBanRoom(roomInfo.whiteboard_room_uuid);
+                await whiteboardBanRoom(region, roomInfo.whiteboard_room_uuid);
             }
         });
 
@@ -117,37 +141,18 @@ export const cancelPeriodicSubRoom: Controller<
             status: Status.Success,
             data: {},
         };
-    } catch (err) {
-        logger.error("request failed", parseError(err));
-        return {
-            status: Status.Failed,
-            code: ErrorCode.CurrentProcessFailed,
-        };
     }
-};
 
-interface CancelPeriodicSubRoomRequest {
+    public errorHandler(error: Error): ResponseError {
+        return this.currentProcessFailed(error);
+    }
+}
+
+interface RequestType {
     body: {
         periodicUUID: string;
         roomUUID: string;
     };
 }
 
-export const cancelPeriodicSubRoomSchemaType: FastifySchema<CancelPeriodicSubRoomRequest> = {
-    body: {
-        type: "object",
-        required: ["periodicUUID"],
-        properties: {
-            periodicUUID: {
-                type: "string",
-                format: "uuid-v4",
-            },
-            roomUUID: {
-                type: "string",
-                format: "uuid-v4",
-            },
-        },
-    },
-};
-
-interface CancelPeriodicSubRoomResponse {}
+interface ResponseType {}

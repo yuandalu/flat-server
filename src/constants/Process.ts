@@ -1,6 +1,7 @@
 import packages from "../../package.json";
 
 export const isDev = process.env.NODE_ENV === "development";
+export const isTest = process.env.IS_TEST === "yes";
 
 export const Server = {
     PORT: process.env.SERVER_PORT,
@@ -84,4 +85,16 @@ export const AlibabaCloud = {
     OSS_ACCESS_KEY_SECRET: process.env.ALIBABA_CLOUD_OSS_ACCESS_KEY_SECRET,
     OSS_BUCKET: process.env.ALIBABA_CLOUD_OSS_BUCKET,
     OSS_REGION: process.env.ALIBABA_CLOUD_OSS_REGION,
+};
+
+export const LogConfig = {
+    PATHNAME: process.env.LOG_PATHNAME,
+    FILENAME: process.env.LOG_FILENAME,
+};
+
+export const metricsConfig = {
+    ENABLED: (process.env.METRICS_ENABLED && process.env.METRICS_ENABLED === "true") || false,
+    ENDPOINT: process.env.METRICS_ENDPOINT || "/metrics",
+    BLACKLIST: process.env.METRICS_BLACKLIST || "/metrics,/health-check",
+    PORT: parseInt(process.env.METRICS_PORT) || 0,
 };

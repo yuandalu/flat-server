@@ -1,7 +1,7 @@
 import { PeriodicStatus, RoomStatus, RoomType, Week } from "../../../../model/room/Constants";
 import { Periodic } from "../Types";
-import { Status } from "../../../../constants/Project";
-import { Controller, FastifySchema } from "../../../../types/Server";
+import { Region, Status } from "../../../../constants/Project";
+import { FastifySchema, Response, ResponseError } from "../../../../types/Server";
 import { v4 } from "uuid";
 import { differenceInCalendarDays, toDate } from "date-fns/fp";
 import { getConnection } from "typeorm";
@@ -17,36 +17,111 @@ import {
 } from "../../../../dao";
 import { calculatePeriodicDates } from "../utils/Periodic";
 import { checkBeginAndEndTime } from "../utils/CheckTime";
-import { parseError } from "../../../../Logger";
+import { AbstractController } from "../../../../abstract/controller";
+import { Controller } from "../../../../decorator/Controller";
 
-export const createPeriodic: Controller<CreatePeriodicRequest, CreatePeriodicResponse> = async ({
-    req,
-    logger,
-}) => {
-    const { title, type, beginTime, endTime, periodic } = req.body;
-    const { userUUID } = req.user;
+@Controller<RequestType, ResponseType>({
+    method: "post",
+    path: "room/create/periodic",
+    auth: true,
+})
+export class CreatePeriodic extends AbstractController<RequestType, ResponseType> {
+    public static readonly schema: FastifySchema<RequestType> = {
+        body: {
+            type: "object",
+            required: ["title", "type", "beginTime", "endTime", "region", "periodic"],
+            properties: {
+                title: {
+                    type: "string",
+                    maxLength: 50,
+                },
+                type: {
+                    type: "string",
+                    eq: [RoomType.OneToOne, RoomType.SmallClass, RoomType.BigClass],
+                },
+                beginTime: {
+                    type: "integer",
+                    format: "unix-timestamp",
+                },
+                endTime: {
+                    type: "integer",
+                    format: "unix-timestamp",
+                },
+                region: {
+                    type: "string",
+                    enum: [Region.CN_HZ, Region.US_SV, Region.SG, Region.IN_MUM, Region.GB_LON],
+                },
+                periodic: {
+                    type: "object",
+                    required: ["weeks"],
+                    properties: {
+                        weeks: {
+                            type: "array",
+                            uniqueItems: true,
+                            items: {
+                                type: "integer",
+                                enum: [
+                                    Week.Monday,
+                                    Week.Tuesday,
+                                    Week.Wednesday,
+                                    Week.Thursday,
+                                    Week.Friday,
+                                    Week.Saturday,
+                                    Week.Sunday,
+                                ],
+                            },
+                            maxItems: 7,
+                            minItems: 1,
+                        },
+                        rate: {
+                            type: "integer",
+                            maximum: 50,
+                            minimum: 1,
+                            nullable: true,
+                        },
+                        endTime: {
+                            type: "integer",
+                            format: "unix-timestamp",
+                            nullable: true,
+                        },
+                    },
+                    oneOf: [
+                        {
+                            required: ["endTime"],
+                        },
+                        {
+                            required: ["rate"],
+                        },
+                    ],
+                },
+            },
+        },
+    };
 
-    if (!checkBeginAndEndTime(beginTime, endTime)) {
-        return {
-            status: Status.Failed,
-            code: ErrorCode.ParamsCheckFailed,
-        };
-    }
+    public async execute(): Promise<Response<ResponseType>> {
+        const { title, type, beginTime, endTime, region, periodic } = this.body;
+        const userUUID = this.userUUID;
 
-    // check periodic.endTime
-    {
-        if (periodic.endTime) {
-            // beginTime(day) > periodic.endTime(day)
-            if (differenceInCalendarDays(beginTime)(periodic.endTime) < 0) {
-                return {
-                    status: Status.Failed,
-                    code: ErrorCode.ParamsCheckFailed,
-                };
+        if (!checkBeginAndEndTime(beginTime, endTime)) {
+            return {
+                status: Status.Failed,
+                code: ErrorCode.ParamsCheckFailed,
+            };
+        }
+
+        // check periodic.endTime
+        {
+            if (periodic.endTime) {
+                // beginTime(day) > periodic.endTime(day)
+                if (differenceInCalendarDays(beginTime)(periodic.endTime) < 0) {
+                    return {
+                        status: Status.Failed,
+                        code: ErrorCode.ParamsCheckFailed,
+                    };
+                }
             }
         }
-    }
 
-    try {
         const dates = calculatePeriodicDates(beginTime, endTime, periodic);
 
         const periodicUUID = v4();
@@ -80,6 +155,7 @@ export const createPeriodic: Controller<CreatePeriodicRequest, CreatePeriodicRes
                         : dates[dates.length - 1].start,
                     room_type: type,
                     periodic_uuid: periodicUUID,
+                    region,
                 }),
             );
 
@@ -100,9 +176,10 @@ export const createPeriodic: Controller<CreatePeriodicRequest, CreatePeriodicRes
                         room_type: type,
                         room_status: RoomStatus.Idle,
                         room_uuid: roomData[0].fake_room_uuid,
-                        whiteboard_room_uuid: await whiteboardCreateRoom(),
+                        whiteboard_room_uuid: await whiteboardCreateRoom(region),
                         begin_time: roomData[0].begin_time,
                         end_time: roomData[0].end_time,
+                        region,
                     }),
                 );
 
@@ -122,91 +199,22 @@ export const createPeriodic: Controller<CreatePeriodicRequest, CreatePeriodicRes
             status: Status.Success,
             data: {},
         };
-    } catch (err) {
-        logger.error("request failed", parseError(err));
-        return {
-            status: Status.Failed,
-            code: ErrorCode.CurrentProcessFailed,
-        };
     }
-};
 
-interface CreatePeriodicRequest {
+    public errorHandler(error: Error): ResponseError {
+        return this.currentProcessFailed(error);
+    }
+}
+
+interface RequestType {
     body: {
         title: string;
         type: RoomType;
         beginTime: number;
         endTime: number;
+        region: Region;
         periodic: Periodic;
     };
 }
 
-export const createPeriodicSchemaType: FastifySchema<CreatePeriodicRequest> = {
-    body: {
-        type: "object",
-        required: ["title", "type", "beginTime", "endTime", "periodic"],
-        properties: {
-            title: {
-                type: "string",
-                maxLength: 50,
-            },
-            type: {
-                type: "string",
-                eq: [RoomType.OneToOne, RoomType.SmallClass, RoomType.BigClass],
-            },
-            beginTime: {
-                type: "integer",
-                format: "unix-timestamp",
-            },
-            endTime: {
-                type: "integer",
-                format: "unix-timestamp",
-            },
-            periodic: {
-                type: "object",
-                required: ["weeks"],
-                properties: {
-                    weeks: {
-                        type: "array",
-                        uniqueItems: true,
-                        items: {
-                            type: "integer",
-                            enum: [
-                                Week.Monday,
-                                Week.Tuesday,
-                                Week.Wednesday,
-                                Week.Thursday,
-                                Week.Friday,
-                                Week.Saturday,
-                                Week.Sunday,
-                            ],
-                        },
-                        maxItems: 7,
-                        minItems: 1,
-                    },
-                    rate: {
-                        type: "integer",
-                        maximum: 50,
-                        minimum: 1,
-                        nullable: true,
-                    },
-                    endTime: {
-                        type: "integer",
-                        format: "unix-timestamp",
-                        nullable: true,
-                    },
-                },
-                oneOf: [
-                    {
-                        required: ["endTime"],
-                    },
-                    {
-                        required: ["rate"],
-                    },
-                ],
-            },
-        },
-    },
-};
-
-interface CreatePeriodicResponse {}
+interface ResponseType {}

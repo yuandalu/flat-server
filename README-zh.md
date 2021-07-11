@@ -127,6 +127,12 @@ docker run -dit -p 6379:6379 --name redis -v `pwd`/data:/data -v `pwd`/conf:/usr
 | MYSQL_DB                            | MySQL 要连接的数据库名                 | 推荐: `flat_server`                           |
 | JWT_SECRET                          | JWT 秘钥                             |                                               |
 | JWT_ALGORITHMS                      | JWT 加密算法                          | 见: [Algorithms supported][jwt-crypto]        |
+| LOG_PATHNAME                        | Log 日志路径                          | 如: `{{PROJECT_DIR}}/logs`，详情可见 [env variable][env-variable]    |
+| LOG_FILENAME                        | Log 文件名称                          | 如: `{{DAY_DATE}}`，详情可见 [env variable][env-variable]    |
+| METRICS_ENABLED                     | 开启 prometheus 指标接口                      | 默认: `false`, 详情可见: [fastify-metrics][fastify-metrics]         |
+| METRICS_ENDPOINT                    | 指标接口地址                           | 默认: `/metrics`.                         |
+| METRICS_BLACKLIST                   | 指标收集的路由黑名单                     | 默认: `/metrics,/health-check`, 逗号分隔                  |
+| METRICS_PORT                        | metrics接口所使用的http端口            | 默认: `0`, 当该值为0时，将复用 flat-server 监听端口，否则将监听传入的端口号                  |
 | CLOUD_STORAGE_CONCURRENT            | 云盘同一时间上传文件数                  | 默认: `3`                                        |
 | CLOUD_STORAGE_SINGLE_FILE_SIZE      | 云盘上传单个文件大小最大值               | 默认: `524288000`（500M）                        |
 | CLOUD_STORAGE_TOTAL_SIZE            | 云盘总量最大值                         | 默认: `2147483648`（2G）                         |
@@ -136,8 +142,8 @@ docker run -dit -p 6379:6379 --name redis -v `pwd`/data:/data -v `pwd`/conf:/usr
 | WEB_WECHAT_APP_SECRET               | [微信开放平台][open-wechat] App 密钥   | 见 `网站应用` 里 `AppSecret`                     |
 | MOBILE_WECHAT_APP_ID                | [微信开放平台][open-wechat] App ID    | 见 `移动应用` 里 `AppID`                         |
 | MOBILE_WECHAT_APP_SECRET            | [微信开放平台][open-wechat] App 秘钥   | 见 `移动应用` 里 `AppSecret`                     |
-| GITHUB_CLIENT_ID                    | Github Client ID                    | 见 [Authorizing OAuth Apps](authorizing-oauth-apps)                    |
-| GITHUB_CLIENT_SECRET                | Github Client Secret                | 见 [Authorizing OAuth Apps](authorizing-oauth-apps)                    |
+| GITHUB_CLIENT_ID                    | Github Client ID                    | 见 [Authorizing OAuth Apps][authorizing-oauth-apps]                    |
+| GITHUB_CLIENT_SECRET                | Github Client Secret                | 见 [Authorizing OAuth Apps][authorizing-oauth-apps]                    |
 | AGORA_APP_ID                        | Agora App ID                        | 用于 RTC 与 RTM。见: [Use an App ID for authentication][agora-app-id-auth]    |
 | AGORA_APP_CERTIFICATE               | Agora App Certificate               | 见: [Enable the App Certificate][agora-app-auth]             |
 | AGORA_RESTFUL_ID                    | Agora RESTful ID                    | 用于课程回放。见: [Restful Authentication][agora-restful-auth]            |
@@ -174,6 +180,8 @@ docker run -dit -p 6379:6379 --name redis -v `pwd`/data:/data -v `pwd`/conf:/usr
 
 [netless-auth]: https://docs.agora.io/cn/whiteboard/generate_whiteboard_token_at_app_server?platform=RESTful
 
+[env-variable]: https://github.com/netless-io/flat-server/blob/main/src/utils/EnvVariable.ts
+
 [jwt-crypto]: https://github.com/auth0/node-jsonwebtoken/tree/d71e383862fc735991fd2e759181480f066bf138#algorithms-supported
 
 [open-wechat]: https://open.weixin.qq.com/
@@ -188,6 +196,7 @@ docker run -dit -p 6379:6379 --name redis -v `pwd`/data:/data -v `pwd`/conf:/usr
 [docker]: https://hub.docker.com
 [docker-setting]: https://hub.docker.com/settings/security
 
+[fastify-metrics]: https://github.com/SkeLLLa/fastify-metrics
 
 ## 技术选型
 

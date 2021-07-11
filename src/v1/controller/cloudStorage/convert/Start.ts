@@ -3,23 +3,39 @@ import { Status } from "../../../../constants/Project";
 import { ErrorCode } from "../../../../ErrorCode";
 import { createWhiteboardTaskToken } from "../../../../utils/NetlessToken";
 import { CloudStorageFilesDAO, CloudStorageUserFilesDAO } from "../../../../dao";
-import { Controller, FastifySchema } from "../../../../types/Server";
+import { FastifySchema, Response, ResponseError } from "../../../../types/Server";
 import {
     TaskCreated,
     whiteboardCreateConversionTask,
 } from "../../../utils/request/whiteboard/WhiteboardRequest";
 import { FileConvertStep } from "../../../../model/cloudStorage/Constants";
 import { determineType, isConverting, isConvertDone, isConvertFailed } from "./Utils";
-import { parseError } from "../../../../Logger";
+import { AbstractController } from "../../../../abstract/controller";
+import { Controller } from "../../../../decorator/Controller";
 
-export const fileConvertStart: Controller<
-    FileConvertStartRequest,
-    FileConvertStartResponse
-> = async ({ req, logger }) => {
-    const { fileUUID } = req.body;
-    const { userUUID } = req.user;
+@Controller<RequestType, ResponseType>({
+    method: "post",
+    path: "cloud-storage/convert/start",
+    auth: true,
+})
+export class FileConvertStart extends AbstractController<RequestType, ResponseType> {
+    public static readonly schema: FastifySchema<RequestType> = {
+        body: {
+            type: "object",
+            required: ["fileUUID"],
+            properties: {
+                fileUUID: {
+                    type: "string",
+                    format: "uuid-v4",
+                },
+            },
+        },
+    };
 
-    try {
+    public async execute(): Promise<Response<ResponseType>> {
+        const { fileUUID } = this.body;
+        const userUUID = this.userUUID;
+
         const userFileInfo = await CloudStorageUserFilesDAO().findOne(["id"], {
             file_uuid: fileUUID,
             user_uuid: userUUID,
@@ -32,9 +48,12 @@ export const fileConvertStart: Controller<
             };
         }
 
-        const fileInfo = await CloudStorageFilesDAO().findOne(["file_url", "convert_step"], {
-            file_uuid: fileUUID,
-        });
+        const fileInfo = await CloudStorageFilesDAO().findOne(
+            ["file_url", "convert_step", "region"],
+            {
+                file_uuid: fileUUID,
+            },
+        );
 
         if (fileInfo === undefined) {
             return {
@@ -43,7 +62,7 @@ export const fileConvertStart: Controller<
             };
         }
 
-        const { file_url: resource, convert_step } = fileInfo;
+        const { file_url: resource, convert_step, region } = fileInfo;
 
         if (isConverting(convert_step)) {
             return {
@@ -69,13 +88,13 @@ export const fileConvertStart: Controller<
         const fileType = determineType(resource);
         let result: AxiosResponse<TaskCreated>;
         if (fileType === "dynamic") {
-            result = await whiteboardCreateConversionTask({
+            result = await whiteboardCreateConversionTask(region, {
                 resource,
                 type: fileType,
                 preview: true,
             });
         } else {
-            result = await whiteboardCreateConversionTask({
+            result = await whiteboardCreateConversionTask(region, {
                 resource,
                 type: fileType,
                 pack: true,
@@ -102,35 +121,20 @@ export const fileConvertStart: Controller<
                 taskToken,
             },
         };
-    } catch (err) {
-        logger.error("request failed", parseError(err));
-        return {
-            status: Status.Failed,
-            code: ErrorCode.CurrentProcessFailed,
-        };
     }
-};
 
-interface FileConvertStartRequest {
+    public errorHandler(error: Error): ResponseError {
+        return this.currentProcessFailed(error);
+    }
+}
+
+interface RequestType {
     body: {
         fileUUID: string;
     };
 }
 
-export const fileConvertStartSchemaType: FastifySchema<FileConvertStartRequest> = {
-    body: {
-        type: "object",
-        required: ["fileUUID"],
-        properties: {
-            fileUUID: {
-                type: "string",
-                format: "uuid-v4",
-            },
-        },
-    },
-};
-
-interface FileConvertStartResponse {
+interface ResponseType {
     taskUUID: string;
     taskToken: string;
 }
