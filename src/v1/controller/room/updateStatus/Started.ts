@@ -4,7 +4,7 @@ import { Status } from "../../../../constants/Project";
 import { PeriodicStatus, RoomStatus } from "../../../../model/room/Constants";
 import { ErrorCode } from "../../../../ErrorCode";
 import { RoomDAO, RoomPeriodicConfigDAO, RoomPeriodicDAO } from "../../../../dao";
-import { roomIsRunning } from "../utils/Room";
+import { roomIsRunning } from "../utils/RoomStatus";
 import { AbstractController } from "../../../../abstract/controller";
 import { Controller } from "../../../../decorator/Controller";
 
@@ -111,7 +111,7 @@ export class UpdateStatusStarted extends AbstractController<RequestType, Respons
     }
 
     public errorHandler(error: Error): ResponseError {
-        return this.currentProcessFailed(error);
+        return this.autoHandlerError(error);
     }
 }
 

@@ -2,7 +2,7 @@ import { FastifySchema, Response, ResponseError } from "../../../../../types/Ser
 import { Status } from "../../../../../constants/Project";
 import { ErrorCode } from "../../../../../ErrorCode";
 import { RoomDAO } from "../../../../../dao";
-import { roomIsRunning } from "../../utils/Room";
+import { roomIsRunning } from "../../utils/RoomStatus";
 import {
     AgoraCloudRecordParamsType,
     AgoraCloudRecordQueryResponse,
@@ -77,7 +77,7 @@ export class RecordAgoraQuery extends AbstractController<RequestType, ResponseTy
     }
 
     public errorHandler(error: Error): ResponseError {
-        return this.currentProcessFailed(error);
+        return this.autoHandlerError(error);
     }
 }
 

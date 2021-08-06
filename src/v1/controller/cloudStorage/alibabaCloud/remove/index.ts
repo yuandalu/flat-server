@@ -1,9 +1,9 @@
 import { createQueryBuilder, getConnection, In } from "typeorm";
-import { Status } from "../../../../../constants/Project";
+import { Region, Status } from "../../../../../constants/Project";
 import {
     CloudStorageConfigsDAO,
-    CloudStorageUserFilesDAO,
     CloudStorageFilesDAO,
+    CloudStorageUserFilesDAO,
 } from "../../../../../dao";
 import { CloudStorageFilesModel } from "../../../../../model/cloudStorage/CloudStorageFiles";
 import { CloudStorageUserFilesModel } from "../../../../../model/cloudStorage/CloudStorageUserFiles";
@@ -11,6 +11,8 @@ import { FastifySchema, Response, ResponseError } from "../../../../../types/Ser
 import { getFilePath, ossClient } from "../Utils";
 import { AbstractController } from "../../../../../abstract/controller";
 import { Controller } from "../../../../../decorator/Controller";
+import { ControllerError } from "../../../../../error/ControllerError";
+import { ErrorCode } from "../../../../../ErrorCode";
 
 @Controller<RequestType, ResponseType>({
     method: "post",
@@ -29,6 +31,7 @@ export class AlibabaCloudRemoveFile extends AbstractController<RequestType, Resp
                         type: "string",
                         format: "uuid-v4",
                     },
+                    minItems: 1,
                 },
             },
         },
@@ -38,17 +41,22 @@ export class AlibabaCloudRemoveFile extends AbstractController<RequestType, Resp
         const { fileUUIDs } = this.body;
         const userUUID = this.userUUID;
 
-        const fileInfo = await createQueryBuilder(CloudStorageUserFilesModel, "fc")
+        await this.assertFilesOwnerIsCurrentUser();
+
+        const fileInfo: FileInfoType[] = await createQueryBuilder(CloudStorageUserFilesModel, "fc")
             .addSelect("f.file_uuid", "file_uuid")
             .addSelect("f.file_name", "file_name")
             .addSelect("f.file_size", "file_size")
+            .addSelect("f.region", "region")
             .innerJoin(CloudStorageFilesModel, "f", "fc.file_uuid = f.file_uuid")
             .where(
                 `f.file_uuid IN (:...fileUUIDs)
+                AND fc.user_uuid = :userUUID
                 AND fc.is_delete = false
                 AND f.is_delete = false`,
                 {
                     fileUUIDs,
+                    userUUID,
                 },
             )
             .getRawMany();
@@ -66,20 +74,26 @@ export class AlibabaCloudRemoveFile extends AbstractController<RequestType, Resp
 
         const totalUsage = Number(cloudStorageConfigsInfo?.total_usage) || 0;
 
-        const { fileURLList, remainingTotalUsage } = ((): {
-            fileURLList: string[];
+        const { fileList, remainingTotalUsage } = ((): {
+            fileList: FileListType;
             remainingTotalUsage: number;
         } => {
-            const fileURLList: string[] = [];
+            const fileList: FileListType = {};
             let remainingTotalUsage = totalUsage;
 
-            fileInfo.forEach(({ file_uuid, file_name, file_size }) => {
-                fileURLList.push(getFilePath(file_name, file_uuid));
+            fileInfo.forEach(({ file_uuid, file_name, file_size, region }) => {
+                if (typeof fileList[region] === "undefined") {
+                    fileList[region] = [];
+                }
+
+                (fileList as Required<FileListType>)[region].push(
+                    getFilePath(file_name, file_uuid),
+                );
                 remainingTotalUsage -= file_size;
             });
 
             return {
-                fileURLList,
+                fileList,
                 remainingTotalUsage: remainingTotalUsage < 0 ? 0 : remainingTotalUsage,
             };
         })();
@@ -112,7 +126,12 @@ export class AlibabaCloudRemoveFile extends AbstractController<RequestType, Resp
             );
 
             await Promise.all(commands);
-            await ossClient.deleteMulti(fileURLList);
+
+            const deleteMultiByRegion = Object.keys(fileList).map(region => {
+                return ossClient[region as Region].deleteMulti(fileList[region as Region]!);
+            });
+
+            await Promise.all(deleteMultiByRegion);
         });
 
         return {
@@ -122,7 +141,19 @@ export class AlibabaCloudRemoveFile extends AbstractController<RequestType, Resp
     }
 
     public errorHandler(error: Error): ResponseError {
-        return this.currentProcessFailed(error);
+        return this.autoHandlerError(error);
+    }
+
+    private async assertFilesOwnerIsCurrentUser(): Promise<void> {
+        const filesOwner = await CloudStorageUserFilesDAO().find(["user_uuid"], {
+            file_uuid: In(this.body.fileUUIDs),
+        });
+
+        for (const { user_uuid } of filesOwner) {
+            if (user_uuid !== this.userUUID) {
+                throw new ControllerError(ErrorCode.NotPermission);
+            }
+        }
     }
 }
 
@@ -133,3 +164,14 @@ interface RequestType {
 }
 
 interface ResponseType {}
+
+type FileListType = {
+    [region in Region]?: string[];
+};
+
+interface FileInfoType {
+    file_uuid: string;
+    file_name: string;
+    file_size: number;
+    region: Region;
+}

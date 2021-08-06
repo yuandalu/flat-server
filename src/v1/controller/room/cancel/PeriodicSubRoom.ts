@@ -3,7 +3,7 @@ import { Status } from "../../../../constants/Project";
 import { ErrorCode } from "../../../../ErrorCode";
 import { getConnection } from "typeorm";
 import { RoomDAO, RoomPeriodicConfigDAO, RoomPeriodicDAO } from "../../../../dao";
-import { roomIsRunning } from "../utils/Room";
+import { roomIsRunning } from "../utils/RoomStatus";
 import { getNextPeriodicRoomInfo, updateNextPeriodicRoomInfo } from "../../../service/Periodic";
 import { PeriodicStatus } from "../../../../model/room/Constants";
 import { whiteboardBanRoom } from "../../../utils/request/whiteboard/WhiteboardRequest";
@@ -144,7 +144,7 @@ export class CancelPeriodicSubRoom extends AbstractController<RequestType, Respo
     }
 
     public errorHandler(error: Error): ResponseError {
-        return this.currentProcessFailed(error);
+        return this.autoHandlerError(error);
     }
 }
 

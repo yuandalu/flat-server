@@ -15,7 +15,7 @@ import {
     RoomPeriodicUserDAO,
     RoomUserDAO,
 } from "../../../../dao";
-import { calculatePeriodicDates } from "../utils/Periodic";
+import { calculatePeriodicDates } from "../utils/CalculatePeriodicDates";
 import { checkBeginAndEndTime } from "../utils/CheckTime";
 import { AbstractController } from "../../../../abstract/controller";
 import { Controller } from "../../../../decorator/Controller";
@@ -202,7 +202,7 @@ export class CreatePeriodic extends AbstractController<RequestType, ResponseType
     }
 
     public errorHandler(error: Error): ResponseError {
-        return this.currentProcessFailed(error);
+        return this.autoHandlerError(error);
     }
 }
 

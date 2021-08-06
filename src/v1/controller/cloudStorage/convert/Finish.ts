@@ -73,8 +73,8 @@ export class FileConvertFinish extends AbstractController<RequestType, ResponseT
             };
         }
 
-        const fileType = determineType(resource);
-        const result = await whiteboardQueryConversionTask(region, task_uuid, fileType);
+        const resourceType = determineType(resource);
+        const result = await whiteboardQueryConversionTask(region, task_uuid, resourceType);
         const convertStatus = result.data.status;
 
         switch (convertStatus) {
@@ -121,7 +121,7 @@ export class FileConvertFinish extends AbstractController<RequestType, ResponseT
     }
 
     public errorHandler(error: Error): ResponseError {
-        return this.currentProcessFailed(error);
+        return this.autoHandlerError(error);
     }
 }
 

@@ -1,17 +1,16 @@
 import { FastifySchema, Response, ResponseError } from "../../../../types/Server";
 import { Status } from "../../../../constants/Project";
 import { ErrorCode } from "../../../../ErrorCode";
-import { roomIsIdle, roomIsRunning } from "../utils/Room";
+import { roomIsIdle, roomIsRunning } from "../utils/RoomStatus";
 import { Controller } from "../../../../decorator/Controller";
-import { AbstractController } from "../../../../abstract/controller";
-import { ControllerClassParams } from "../../../../abstract/controller";
-import { ServiceOrdinary } from "../../../service";
+import { AbstractController, ControllerClassParams } from "../../../../abstract/controller";
+import { ServiceRoom, ServiceRoomUser } from "../../../service";
 import { FlatError } from "../../../../error/FlatError";
 import { ControllerError } from "../../../../error/ControllerError";
 import { RoomModel } from "../../../../model/room/Room";
 import { whiteboardBanRoom } from "../../../utils/request/whiteboard/WhiteboardRequest";
 import { parseError } from "../../../../logger";
-import { ORM, ORMType } from "../../../../utils/ORM";
+import { getConnection } from "typeorm";
 
 @Controller<RequestType, ResponseType>({
     method: "post",
@@ -33,30 +32,21 @@ export class CancelOrdinary extends AbstractController<RequestType, ResponseType
     };
 
     private readonly svc: {
-        room: ServiceOrdinary;
+        room: ServiceRoom;
+        roomUser: ServiceRoomUser;
     };
 
-    private readonly orm: ORM;
-
-    public constructor(
-        params: ControllerClassParams,
-        payload?: {
-            serviceOrdinary?: ServiceOrdinary;
-            orm?: ORMType;
-        },
-    ) {
+    public constructor(params: ControllerClassParams) {
         super(params);
 
         this.svc = {
-            room:
-                payload?.serviceOrdinary || new ServiceOrdinary(this.body.roomUUID, this.userUUID),
+            room: new ServiceRoom(this.body.roomUUID, this.userUUID),
+            roomUser: new ServiceRoomUser(this.body.roomUUID, this.userUUID),
         };
-
-        this.orm = payload?.orm || new ORM();
     }
 
     public async execute(): Promise<Response<ResponseType>> {
-        const roomInfo = await this.svc.room.info([
+        const roomInfo = await this.svc.room.assertInfo([
             "room_status",
             "owner_uuid",
             "periodic_uuid",
@@ -68,10 +58,10 @@ export class CancelOrdinary extends AbstractController<RequestType, ResponseType
 
         this.assertRoomValid(roomInfo);
 
-        await this.orm.transaction(async t => {
+        await getConnection().transaction(async t => {
             const commands: Promise<unknown>[] = [];
 
-            commands.push(this.svc.room.removeUser(t));
+            commands.push(this.svc.roomUser.removeSelf(t));
 
             if (this.userIsRoomOwner(owner_uuid) && roomIsIdle(room_status)) {
                 commands.push(this.svc.room.remove(t));

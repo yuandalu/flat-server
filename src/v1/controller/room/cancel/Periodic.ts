@@ -10,7 +10,7 @@ import {
     RoomPeriodicUserDAO,
     RoomUserDAO,
 } from "../../../../dao";
-import { roomIsRunning } from "../utils/Room";
+import { roomIsRunning } from "../utils/RoomStatus";
 import { Controller } from "../../../../decorator/Controller";
 import { AbstractController } from "../../../../abstract/controller";
 
@@ -132,7 +132,7 @@ export class CancelPeriodic extends AbstractController<RequestType, ResponseType
     }
 
     public errorHandler(error: Error): ResponseError {
-        return this.currentProcessFailed(error);
+        return this.autoHandlerError(error);
     }
 }
 
